@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import pandas as pd
-
+import os 
 # Function to create a custom cyclic colormap
 def create_custom_cyclic_cmap():
     """
@@ -30,7 +30,7 @@ def create_hovmoller_diagram(data, time, heights, cmap, label, title):
     - label: label for the color bar
     - title: title of the plot
     """
-    plt.figure(figsize=(10, 6))
+    fig = plt.figure(figsize=(10, 6))
     
     # Plotting the heatmap (Hovmöller diagram)
     plt.contourf(time, heights, data, cmap=cmap, levels=np.linspace(0, 360, 361), extend='both')
@@ -47,8 +47,7 @@ def create_hovmoller_diagram(data, time, heights, cmap, label, title):
     plt.ylabel('Height (m)')
     plt.title(title)
     
-    # Show the plot
-    plt.show()
+    return fig
 
 # Load the data (update with your actual data)
 df = pd.read_csv("./WLS866-104_2024_08_01__00_00_00.rtd",
@@ -73,4 +72,8 @@ vertical_levels = [40, 60, 70, 100, 120, 150]  # Heights for the y-axis
 cyclic_cmap = create_custom_cyclic_cmap()
 
 # Call the function to create and show the Hovmöller Diagram for wind direction
-create_hovmoller_diagram(hovmoller_data_dir, time, vertical_levels, cyclic_cmap, 'Wind Direction (°)', 'Hovmöller Diagram: Wind Direction Across Heights')
+fig = create_hovmoller_diagram(hovmoller_data_dir, time, vertical_levels, cyclic_cmap, 'Wind Direction (°)', 'Hovmöller Diagram: Wind Direction Across Heights')
+
+# Save the plot
+os.makedirs('plots', exist_ok=True)
+fig.savefig('plots/hovmoller_wind_dir.png')

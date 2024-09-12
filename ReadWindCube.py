@@ -22,34 +22,28 @@ class WindOperationsAccessor:
         """
         return self._obj[f'{height}m {variable}']
     
-    def compute_detrended_data(self, data, window=600):
+    def compute_std_detrended_data(self, data, window_size=600):
         """
-        Compute detrended wind speed data using a rolling mean.
+        Compute the rolling standard deviation over a specific window, handling NaNs by filling them.
         
         Parameters:
-        data (xarray.DataArray): Wind speed data array.
-        window (int): Rolling window size for calculating the mean.
+        - data: xarray DataArray of wind speeds
+        - window_size: the size of the window (in number of time steps) over which to compute the rolling std.
         
         Returns:
-        xarray.DataArray: Detrended wind speed data.
+        - rolling_std: the rolling standard deviation for each time step
         """
-        rolling_mean = data.rolling(time=window, min_periods=1).mean()
-        detrended_data = data - rolling_mean
-        return detrended_data
+        # Compute the rolling mean on the filled data
+        rolling_mean = data.rolling(time=window_size, min_periods=1, center=True).mean()
 
-    def compute_std_detrended_data(self, data, window=600):
-        """
-        Compute the standard deviation of detrended wind speed data.
+        # Subtract the rolling mean to detrend the data
+        detrended_data = data - rolling_mean
+
+        # Compute the rolling standard deviation
+        rolling_std = detrended_data.rolling(time=window_size, min_periods=1, center=True).std()
         
-        Parameters:
-        data (xarray.DataArray): Wind speed data array.
-        window (int): Rolling window size for calculating the mean.
-        
-        Returns:
-        float: Standard deviation of the detrended wind speed data.
-        """
-        detrended_data = self.compute_detrended_data(data, window=window)
-        return detrended_data.std(dim="time")
+        return rolling_std
+
 
     def plot_variable(self, height, variable='Wind Speed (m/s)'):
         """
