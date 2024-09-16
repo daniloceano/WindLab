@@ -46,7 +46,7 @@ def plot_hovmoller(ax, data, time, heights, cmap, label, title, levels=None):
         cbar.set_ticklabels(['N', 'E', 'S', 'W', 'N'])
     
     # Labels and title
-    ax.set_xlabel('Time')
+    ax.set_xlabel('Time', rotation=45)
     ax.set_ylabel('Height (m)')
     ax.set_title(title)
     print(f"Figure for {title} created.")
