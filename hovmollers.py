@@ -44,9 +44,12 @@ def plot_hovmoller(ax, data, time, heights, cmap, label, title, levels=None):
         # Customize the color bar to show wind direction labels
         cbar.set_ticks([0, 90, 180, 270, 360])
         cbar.set_ticklabels(['N', 'E', 'S', 'W', 'N'])
+
+    # Rotate x-axis labels
+    plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
     
     # Labels and title
-    ax.set_xlabel('Time', rotation=45)
+    ax.set_xlabel('Time')
     ax.set_ylabel('Height (m)')
     ax.set_title(title)
     print(f"Figure for {title} created.")
