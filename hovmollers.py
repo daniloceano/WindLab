@@ -70,6 +70,10 @@ ds = create_xarray_dataset(df_combined)
 # Automatically detect the available heights from the dataset
 available_heights = ds.coords['height'].values
 
+# Time array for the x-axis (assuming you already have timestamps in the data)
+time = pd.to_datetime(df_combined['Timestamp'])
+time = time.ffill()  # Forward fill NaN values in timestamps
+
 # Aggregate wind speed data for each height
 # Handle NaN values in wind speed data by forward-filling along the time dimension
 hovmoller_data_speed = np.vstack([
@@ -77,9 +81,18 @@ hovmoller_data_speed = np.vstack([
     for height in available_heights
 ])
 
+# Compute the time difference between consecutive time steps
+time_diff = time.diff().dropna().median()  # Use median to handle any irregularities
+
+# Convert time difference to seconds (assuming it's in Timedelta format)
+time_diff_in_seconds = time_diff.total_seconds()
+
+# Compute the number of time steps in 10 minutes (600 seconds)
+time_steps_for_10_minutes = int(600 / time_diff_in_seconds)
+
 # Compute rolling standard deviation for each height (for wind speed)
 hovmoller_data_std = np.vstack([
-    ds.wind_cube.compute_std_detrended_data(ds.wind_cube.get_variable(height, 'Wind Speed (m/s)'), window_size=600).values
+    ds.wind_cube.compute_std_detrended_data(ds.wind_cube.get_variable(height, 'Wind Speed (m/s)'), window_size=time_steps_for_10_minutes).values
     for height in available_heights
 ])
 
@@ -89,11 +102,6 @@ hovmoller_data_dir = np.vstack([
     ds.wind_cube.get_variable(height, 'Wind Direction (°)').ffill(dim='time').values
     for height in available_heights
 ])
-
-# Time array for the x-axis (assuming you already have timestamps in the data)
-time = pd.to_datetime(df_combined['Timestamp'])
-time = time.ffill()  # Forward fill NaN values in timestamps
-vertical_levels = ds.coords['height'].values
 
 # Xolormap for wind speed
 speed_cmap = 'rainbow'
@@ -108,13 +116,13 @@ std_cmap = 'coolwarm'
 fig, axes = plt.subplots(nrows=3, figsize=(12, 12), sharex=True)
 
 # Plot the wind speed in the first row
-plot_hovmoller(axes[0], hovmoller_data_speed, time, vertical_levels, speed_cmap, 'Wind Speed (m/s)', 'Wind Speed', levels=50)
+plot_hovmoller(axes[0], hovmoller_data_speed, time, available_heights, speed_cmap, 'Wind Speed (m/s)', 'Wind Speed', levels=50)
 
 # Plot the wind direction in the second row
-plot_hovmoller(axes[1], hovmoller_data_dir, time, vertical_levels, cyclic_cmap, 'Wind Direction (°)', 'Wind Direction', levels=np.linspace(0, 360, 361))
+plot_hovmoller(axes[1], hovmoller_data_dir, time, available_heights, cyclic_cmap, 'Wind Direction (°)', 'Wind Direction', levels=np.linspace(0, 360, 361))
 
 # Plot the wind speed standard deviation in the third row
-plot_hovmoller(axes[2], hovmoller_data_std, time, vertical_levels, std_cmap, '10-min Wind Std Dev (m/s)', 'Wind Speed Std Dev', levels=50)
+plot_hovmoller(axes[2], hovmoller_data_std, time, available_heights, std_cmap, '10-min Wind Std Dev (m/s)', 'Wind Speed Std Dev', levels=50)
 
 # Save the final figure with all three plots
 os.makedirs('plots', exist_ok=True)
