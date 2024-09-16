@@ -49,6 +49,7 @@ def plot_hovmoller(ax, data, time, heights, cmap, label, title, levels=None):
     ax.set_xlabel('Time')
     ax.set_ylabel('Height (m)')
     ax.set_title(title)
+    print(f"Figure for {title} created.")
 
 # Load the data from multiple .rtd files
 files = sorted(glob("./Data/*.rtd"))
@@ -57,9 +58,11 @@ files = sorted(glob("./Data/*.rtd"))
 df_list = []
 
 # Loop through each file and read it
-for file in files[:3]:
+for file in files:
+    print(f"Reading file: {file}")
     df = pd.read_csv(file, encoding='unicode_escape', skiprows=range(41), sep='\t')
     df_list.append(df)
+print(f"Read {len(df_list)} files.")
 
 # Concatenate all DataFrames into a single DataFrame
 df_combined = pd.concat(df_list, ignore_index=True)
@@ -80,6 +83,7 @@ hovmoller_data_speed = np.vstack([
     ds.wind_cube.get_variable(height, 'Wind Speed (m/s)').ffill(dim='time').values
     for height in available_heights
 ])
+print(f"hovmoller_data_speed shape: {hovmoller_data_speed.shape}")
 
 # Compute the time difference between consecutive time steps
 time_diff = time.diff().dropna().median()  # Use median to handle any irregularities
@@ -95,6 +99,7 @@ hovmoller_data_std = np.vstack([
     ds.wind_cube.compute_std_detrended_data(ds.wind_cube.get_variable(height, 'Wind Speed (m/s)'), window_size=time_steps_for_10_minutes).values
     for height in available_heights
 ])
+print(f"hovmoller_data_std shape: {hovmoller_data_std.shape}")
 
 # Aggregate wind direction data for each height
 # Handle NaN values in wind direction data by forward-filling along the time dimension
@@ -102,6 +107,7 @@ hovmoller_data_dir = np.vstack([
     ds.wind_cube.get_variable(height, 'Wind Direction (°)').ffill(dim='time').values
     for height in available_heights
 ])
+print(f"hovmoller_data_dir shape: {hovmoller_data_dir.shape}")
 
 # Xolormap for wind speed
 speed_cmap = 'rainbow'
@@ -127,3 +133,4 @@ plot_hovmoller(axes[2], hovmoller_data_std, time, available_heights, std_cmap, '
 # Save the final figure with all three plots
 os.makedirs('plots', exist_ok=True)
 fig.savefig('plots/hovmoller_combined.png')
+print(f"Figure saved to 'plots/hovmoller_combined.png'.")
