@@ -20,7 +20,10 @@ class WindOperationsAccessor:
         Returns:
         xarray.DataArray: Data for the given height and variable.
         """
-        return self._obj[f'{height}m {variable}']
+        try:
+            return self._obj.sel(height=height)[variable]
+        except KeyError:
+            raise KeyError(f"Variable '{variable}' not found for height {height}.")
     
     def compute_std_detrended_data(self, data, window_size=600):
         """
@@ -60,7 +63,7 @@ class WindOperationsAccessor:
         plt.ylabel(variable)
         plt.show()
 
-# Transform the dataset to xarray.Dataset
+# Transform the dataset to xarray.Dataset with height as a dimension
 def create_xarray_dataset(df):
     """
     Create an xarray.Dataset from the DataFrame for wind speed data at multiple heights.
@@ -71,31 +74,37 @@ def create_xarray_dataset(df):
     Returns:
     xarray.Dataset: An xarray Dataset containing wind speed, wind direction, and other variables for different heights.
     """
-    heights = [40, 50, 60, 70, 100, 120, 150]
+    # Automatically detect heights by extracting the numeric part from the column names
+    height_columns = [col for col in df.columns if ' Wind Speed (m/s)' in col]
+    heights = sorted(set(int(col.split('m')[0]) for col in height_columns))
+
     variables = ['Wind Speed (m/s)', 'Wind Direction (°)', 'X-wind (m/s)', 'Y-wind (m/s)', 'Z-wind (m/s)']
 
     data_vars = {}
-    
+
     for var in variables:
-        var_data = {f'{height}m {var}': (['time'], df[f'{height}m {var}']) for height in heights if f'{height}m {var}' in df.columns}
-        data_vars.update(var_data)
+        # Stack height as a dimension and create DataArrays
+        height_data = np.stack([df[f'{height}m {var}'].values for height in heights if f'{height}m {var}' in df.columns])
+        data_vars[var] = (['height', 'time'], height_data)
 
     # Create the xarray dataset
     ds = xr.Dataset(
         data_vars,
         coords={
-            'time': pd.to_datetime(df['Timestamp'])
+            'time': pd.to_datetime(df['Timestamp']),
+            'height': heights
         }
     )
     
     return ds
 
+
 if __name__ == "__main__":
     # Example usage
-    file_path = "./WLS866-104_2024_08_01__00_00_00.rtd"
+    file_path = "./Data/WLS866-104_2024_08_01__00_00_00.rtd"
     df = pd.read_csv(file_path, encoding='unicode_escape', skiprows=range(41), sep='\t')
 
-    # Create xarray dataset
+    # Create xarray dataset with height as a dimension
     ds = create_xarray_dataset(df)
 
     # Now we can use the wind_cube accessor methods
@@ -114,4 +123,3 @@ if __name__ == "__main__":
     ds.wind_cube.plot_variable(40, 'Wind Speed (m/s)')
     ds.wind_cube.plot_variable(60, 'Wind Speed (m/s)')
     ds.wind_cube.plot_variable(100, 'Wind Speed (m/s)')
-

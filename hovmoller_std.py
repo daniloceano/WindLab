@@ -3,7 +3,8 @@ import xarray as xr
 import numpy as np
 import matplotlib.pyplot as plt
 from ReadWindCube import WindOperationsAccessor, create_xarray_dataset
-import os 
+import os
+from glob import glob
 
 # Function to create Hovmöller Diagram
 def create_hovmoller_diagram(data, time, heights, label, title):
@@ -35,34 +36,37 @@ def create_hovmoller_diagram(data, time, heights, label, title):
 
     return fig
 
-# Load the data from .rtd into a Pandas DataFrame
-file_path = "./WLS866-104_2024_08_01__00_00_00.rtd"
-df = pd.read_csv(file_path, encoding='unicode_escape', skiprows=range(41), sep='\t')
+# Get the list of all .rtd files
+files = sorted(glob("./Data/*.rtd"))
 
-# Create the xarray dataset from the DataFrame
-ds = create_xarray_dataset(df)
+# Initialize an empty list to store DataFrames
+df_list = []
 
-# Now we compute the rolling standard deviation using the WindOperationsAccessor class
+# Loop through each file and read it
+for file in files:
+    df = pd.read_csv(file, encoding='unicode_escape', skiprows=range(41), sep='\t')
+    df_list.append(df)
 
-# Compute rolling standard deviation for each height
-std_40m = ds.wind_cube.compute_std_detrended_data(ds.wind_cube.get_variable(40, 'Wind Speed (m/s)'), window_size=600)
-std_60m = ds.wind_cube.compute_std_detrended_data(ds.wind_cube.get_variable(60, 'Wind Speed (m/s)'), window_size=600)
-std_70m = ds.wind_cube.compute_std_detrended_data(ds.wind_cube.get_variable(70, 'Wind Speed (m/s)'), window_size=600)
-std_100m = ds.wind_cube.compute_std_detrended_data(ds.wind_cube.get_variable(100, 'Wind Speed (m/s)'), window_size=600)
-std_120m = ds.wind_cube.compute_std_detrended_data(ds.wind_cube.get_variable(120, 'Wind Speed (m/s)'), window_size=600)
-std_150m = ds.wind_cube.compute_std_detrended_data(ds.wind_cube.get_variable(150, 'Wind Speed (m/s)'), window_size=600)
+# Concatenate all DataFrames into a single DataFrame
+df_combined = pd.concat(df_list, ignore_index=True)
 
-# Combine all wind standard deviations into a 2D array (time steps as columns, heights as rows)
-hovmoller_data_std = np.vstack([std_40m.values, std_60m.values, std_70m.values, std_100m.values, std_120m.values, std_150m.values])
+# Create the xarray dataset from the combined DataFrame
+ds = create_xarray_dataset(df_combined)
 
-# Define the vertical levels for the y-axis (heights)
-vertical_levels = [40, 60, 70, 100, 120, 150]
+# Automatically detect the available heights from the dataset
+available_heights = ds.coords['height'].values
+
+# Now we compute the rolling standard deviation using the WindOperationsAccessor class for each detected height
+hovmoller_data_std = np.vstack([
+    ds.wind_cube.compute_std_detrended_data(ds.wind_cube.get_variable(height, 'Wind Speed (m/s)'), window_size=600).values
+    for height in available_heights
+])
 
 # Time array for the x-axis
 time = ds['time'].values
 
 # Call the function to create and show the Hovmöller Diagram for standard deviation
-fig = create_hovmoller_diagram(hovmoller_data_std, time, vertical_levels, '10-min Wind Std Dev (m/s)', 'Hovmöller Diagram: Wind Speed Std Dev Across Heights')
+fig = create_hovmoller_diagram(hovmoller_data_std, time, available_heights, '10-min Wind Std Dev (m/s)', 'Hovmöller Diagram: Wind Speed Std Dev Across Heights')
 
 # Save the plot
 os.makedirs('plots', exist_ok=True)

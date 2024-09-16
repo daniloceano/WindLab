@@ -132,4 +132,7 @@ autopep8/
 isort/
 flake8/
 pylint/
+
+# Data
 WLS866-104_2024_08_01__00_00_00.rtd
+Data/*
