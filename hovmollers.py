@@ -95,7 +95,8 @@ time_diff = time.diff().dropna().median()  # Use median to handle any irregulari
 time_diff_in_seconds = time_diff.total_seconds()
 
 # Compute the number of time steps in 10 minutes (600 seconds)
-time_steps_for_10_minutes = int(600 / time_diff_in_seconds)
+total_seconds = 60 # 1 minute
+time_steps_for_10_minutes = int(total_seconds / time_diff_in_seconds)
 
 # Compute rolling standard deviation for each height (for wind speed)
 hovmoller_data_std = np.vstack([
@@ -131,9 +132,9 @@ plot_hovmoller(axes[0], hovmoller_data_speed, time, available_heights, speed_cma
 plot_hovmoller(axes[1], hovmoller_data_dir, time, available_heights, cyclic_cmap, 'Wind Direction (°)', 'Wind Direction', levels=np.linspace(0, 360, 361))
 
 # Plot the wind speed standard deviation in the third row
-plot_hovmoller(axes[2], hovmoller_data_std, time, available_heights, std_cmap, '10-min Wind Std Dev (m/s)', 'Wind Speed Std Dev', levels=50)
+plot_hovmoller(axes[2], hovmoller_data_std, time, available_heights, std_cmap, f'{total_seconds}s Wind Std Dev (m/s)', 'Wind Speed Std Dev', levels=50)
 
 # Save the final figure with all three plots
 os.makedirs('plots', exist_ok=True)
 fig.savefig('plots/hovmoller_combined.png')
-print(f"Figure saved to 'plots/hovmoller_combined.png'.")
+print(f"Figure saved to 'plots/hovmoller_combined_1m.png'.")
