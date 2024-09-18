@@ -96,11 +96,11 @@ time_diff_in_seconds = time_diff.total_seconds()
 
 # Compute the number of time steps in 10 minutes (600 seconds)
 total_seconds = 60 # 1 minute
-time_steps_for_10_minutes = int(total_seconds / time_diff_in_seconds)
+time_steps_for_rolling_std = int(total_seconds / time_diff_in_seconds)
 
 # Compute rolling standard deviation for each height (for wind speed)
 hovmoller_data_std = np.vstack([
-    ds.wind_cube.compute_std_detrended_data(ds.wind_cube.get_variable(height, 'Wind Speed (m/s)'), window_size=time_steps_for_10_minutes).values
+    ds.wind_cube.compute_std_detrended_data(ds.wind_cube.get_variable(height, 'Wind Speed (m/s)'), window_size=time_steps_for_rolling_std).values
     for height in available_heights
 ])
 print(f"hovmoller_data_std shape: {hovmoller_data_std.shape}")
@@ -136,5 +136,6 @@ plot_hovmoller(axes[2], hovmoller_data_std, time, available_heights, std_cmap, f
 
 # Save the final figure with all three plots
 os.makedirs('plots', exist_ok=True)
-fig.savefig('plots/hovmoller_combined.png')
-print(f"Figure saved to 'plots/hovmoller_combined_1m.png'.")
+filename = f'plots/hovmoller_combined_{total_seconds}s.png'
+fig.savefig(filename)
+print(f"Figure saved to '{filename}'.")
