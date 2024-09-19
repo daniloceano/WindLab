@@ -94,15 +94,20 @@ time_diff = time.diff().dropna().median()  # Use median to handle any irregulari
 # Convert time difference to seconds (assuming it's in Timedelta format)
 time_diff_in_seconds = time_diff.total_seconds()
 
-# Compute the number of time steps in 10 minutes (600 seconds)
+# Compute the number of time steps for desired window size
 total_seconds = 60 # 1 minute
 time_steps_for_rolling_std = int(total_seconds / time_diff_in_seconds)
 
+# Compute 1 min rolling standard deviation from wind speed data
+hovmoller_data_std = np.vstack([ds.wind_cube.get_variable(height, 'Wind Speed (m/s)').rolling(time=time_steps_for_rolling_std, min_periods=1, center=True).std()
+                                 for height in available_heights])
+
 # Compute rolling standard deviation for each height (for wind speed)
-hovmoller_data_std = np.vstack([
-    ds.wind_cube.compute_std_detrended_data(ds.wind_cube.get_variable(height, 'Wind Speed (m/s)'), window_size=time_steps_for_rolling_std).values
-    for height in available_heights
-])
+# hovmoller_data_std = np.vstack([
+#     ds.wind_cube.compute_std_detrended_data(ds.wind_cube.get_variable(height, 'Wind Speed (m/s)'), window_size=time_steps_for_rolling_std).values
+#     for height in available_heights
+# ])
+
 print(f"hovmoller_data_std shape: {hovmoller_data_std.shape}")
 
 # Aggregate wind direction data for each height
@@ -136,6 +141,6 @@ plot_hovmoller(axes[2], hovmoller_data_std, time, available_heights, std_cmap, f
 
 # Save the final figure with all three plots
 os.makedirs('plots', exist_ok=True)
-filename = f'plots/hovmoller_combined_{total_seconds}s.png'
+filename = f'plots/hovmoller_combined_{total_seconds}s_std.png'
 fig.savefig(filename)
 print(f"Figure saved to '{filename}'.")
