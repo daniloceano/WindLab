@@ -294,15 +294,16 @@ class ReadWindCubeAccessor:
         
         return wind_df
 
-    def plot_wind_rose(self, height, averaging_window=None, colormap='viridis'):
+    def plot_wind_rose(self, height, averaging_window=None, colormap='viridis', period=None):
         """
-        Plot a wind rose using wind speed and direction data, with an option to average the data over a specified time window.
-        
+        Plot a wind rose using wind speed and direction data, with an option to average the data over a specified time window,
+        and filter by a specific month or season.
+
         Parameters:
         -----------
         height : int
             The height at which to plot the wind rose.
-        
+
         averaging_window : str, optional
             A resampling rule to average the data over a specified time window (e.g., '1H' for 1 hour).
             Default is None, meaning no averaging will be performed.
@@ -310,20 +311,45 @@ class ReadWindCubeAccessor:
         colormap : str, optional
             The colormap to use for the wind rose plot. Default is 'viridis'.
         
+        period : str, optional
+            The specific period to filter by. Can be a month ('January', 'February', etc.) or a season ('DJF', 'JJA', etc.).
+            If None, the distribution will be calculated for the entire dataset.
+
         Returns:
         --------
         ax : WindroseAxes
             The WindroseAxes instance used for the plot, allowing the user to modify or save the plot.
-        
+
         Example usage:
         --------------
-        ax = ds_accessor.plot_wind_rose(40, averaging_window='1H', colormap='coolwarm')
+        ax = ds_accessor.plot_wind_rose(40, averaging_window='1H', colormap='coolwarm', period='DJF')
         ax.set_title("Modified Title")  # Example of modifying the plot after it is created
         ax.figure.savefig('windrose_plot.png')  # Example of saving the figure
         """
         # Retrieve wind speed and direction for the specified height
         wind_speed = self.get_variable(height, 'Wind Speed (m/s)')
         wind_direction = self.get_variable(height, 'Wind Direction (°)')
+        time = wind_speed['time']
+
+        # Filter data based on the period (month or season)
+        if period:
+            # Define seasonal periods for meteorological seasons
+            seasons = {
+                'DJF': [12, 1, 2],
+                'MAM': [3, 4, 5],
+                'JJA': [6, 7, 8],
+                'SON': [9, 10, 11]
+            }
+
+            if period in seasons:
+                # Filter by season
+                wind_speed = wind_speed.sel(time=wind_speed['time.month'].isin(seasons[period]))
+                wind_direction = wind_direction.sel(time=wind_direction['time.month'].isin(seasons[period]))
+            else:
+                # Filter by specific month
+                month_num = pd.to_datetime(period, format='%B').month
+                wind_speed = wind_speed.sel(time=wind_speed['time.month'] == month_num)
+                wind_direction = wind_direction.sel(time=wind_direction['time.month'] == month_num)
 
         # Combine wind speed and direction into a DataFrame
         wind_df = pd.DataFrame({
@@ -347,12 +373,13 @@ class ReadWindCubeAccessor:
 
         # Return the WindroseAxes instance
         return ax
+
     
-    def generate_wind_distribution_table(self, height, speed_thresholds=None, direction_bins=None):
+    def generate_wind_distribution_table(self, height, speed_thresholds=None, direction_bins=None, period=None):
         """
         Generate a cumulative wind distribution table where each row represents the cumulative frequency 
         for wind speeds below a given threshold, and each column represents wind directions ±15° around a central value.
-
+        
         Parameters:
         -----------
         height : int
@@ -364,13 +391,17 @@ class ReadWindCubeAccessor:
         direction_bins : list, optional
             List of direction bin edges (in degrees). Default is [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330, 360].
 
+        period : str, optional
+            The specific period to filter by. Can be a month ('January', 'February', etc.) or a season ('DJF', 'JJA', etc.).
+            If None, the distribution will be calculated for the entire dataset.
+
         Returns:
         --------
         pd.DataFrame
             A DataFrame representing the wind distribution table, where rows are cumulative wind speed thresholds, 
             columns are wind direction bins (covering ±15°), and values are percentages of occurrence (formatted to 2 decimal places).
         """
-
+        
         # Default thresholds if none provided
         if speed_thresholds is None:
             speed_thresholds = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32]
@@ -378,13 +409,34 @@ class ReadWindCubeAccessor:
             direction_bins = np.arange(0, 361, 30)  # Centered on 0°, 30°, 60°, etc.
 
         # Retrieve wind speed and direction for the specified height
-        wind_speed = self.get_variable(height, 'Wind Speed (m/s)').values
-        wind_direction = self.get_variable(height, 'Wind Direction (°)').values
+        wind_speed = self.get_variable(height, 'Wind Speed (m/s)')
+        wind_direction = self.get_variable(height, 'Wind Direction (°)')
+        time = wind_speed['time']
+
+        # Filter data based on the period (month or season)
+        if period:
+            # Define seasonal periods for meteorological seasons
+            seasons = {
+                'DJF': [12, 1, 2],
+                'MAM': [3, 4, 5],
+                'JJA': [6, 7, 8],
+                'SON': [9, 10, 11]
+            }
+
+            if period in seasons:
+                # Filter by season
+                wind_speed = wind_speed.sel(time=wind_speed['time.month'].isin(seasons[period]))
+                wind_direction = wind_direction.sel(time=wind_direction['time.month'].isin(seasons[period]))
+            else:
+                # Filter by specific month
+                month_num = pd.to_datetime(period, format='%B').month
+                wind_speed = wind_speed.sel(time=wind_speed['time.month'] == month_num)
+                wind_direction = wind_direction.sel(time=wind_direction['time.month'] == month_num)
 
         # Create a DataFrame with wind speed and direction
         wind_df = pd.DataFrame({
-            'Wind Speed (m/s)': wind_speed,
-            'Wind Direction (°)': wind_direction
+            'Wind Speed (m/s)': wind_speed.values,
+            'Wind Direction (°)': wind_direction.values
         })
 
         # Bin wind directions (±15° around the center)
@@ -419,7 +471,6 @@ class ReadWindCubeAccessor:
         wind_distribution.loc['Maximum'] = wind_df.groupby('Direction Bin', observed=False)['Wind Speed (m/s)'].max()
         wind_distribution.loc['Maximum', 'Omni'] = wind_distribution.loc['Maximum'].max()
 
-
         # Format the table to have only 2 decimal places
         wind_distribution = wind_distribution.map(lambda x: f'{x:.2f}' if isinstance(x, (float, int)) else x)
 
@@ -445,27 +496,34 @@ if __name__ == "__main__":
     # # Plot wind speed
     ds_accessor.plot_variable(40, 'Wind Speed (m/s)')
 
-    # # Subset the dataset some time steps and plot
-    # subset_accessor = ds_accessor.isel(time=slice(0, 50))
-    # subset_accessor.plot_variable(40, 'Wind Speed (m/s)')
+    # Subset the dataset some time steps and plot
+    subset_accessor = ds_accessor.isel(time=slice(0, 50))
+    subset_accessor.plot_variable(40, 'Wind Speed (m/s)')
 
-    # # Subset the dataset for a specific time slice and plot
-    # subset_accessor = ds_accessor.sel(time=slice('2024-08-01T00:00:00', '2024-08-01T02:00:00'))
-    # subset_accessor.plot_variable(40, 'Wind Speed (m/s)')
+    # Subset the dataset for a specific time slice and plot
+    subset_accessor = ds_accessor.sel(time=slice('2024-08-01T00:00:00', '2024-08-01T02:00:00'))
+    subset_accessor.plot_variable(40, 'Wind Speed (m/s)')
 
-    # # Get a pandas DataFrame with wind speed and direction for a specified height
-    # wind_df = ds_accessor.get_wind_df(40)
-    # print(wind_df)
+    # Get a pandas DataFrame with wind speed and direction for a specified height
+    wind_df = ds_accessor.get_wind_df(40)
+    print(wind_df)
 
-    # # Plot wind rose without averaging
-    # ds_accessor.plot_wind_rose(40)
-    # plt.show()
+    # Plot wind rose without averaging
+    ds_accessor.plot_wind_rose(40)
+    plt.show()
  
-    # # Plot wind rose with averaging
-    # ax = ds_accessor.plot_wind_rose(40, averaging_window='1h', colormap='coolwarm')
-    # ax.set_title("Wind Rose at 40m", fontsize=16)
-    # plt.show()
+    # Plot wind rose with averaging
+    ax = ds_accessor.plot_wind_rose(40, averaging_window='1h', colormap='coolwarm')
+    ax.set_title("Wind Rose at 40m", fontsize=16)
+    plt.show()
+
+    # Plot wind rose for 40 meters, filtering for summer (DJF)
+    ax = ds_accessor.plot_wind_rose(40, colormap='coolwarm', period='DJF')
+    plt.show()
 
     wind_distribution_table = ds_accessor.generate_wind_distribution_table(40)
     print(wind_distribution_table)
+
+    wind_distribution_january = ds_accessor.generate_wind_distribution_table(40, period='January')
+    print(wind_distribution_january)
 
