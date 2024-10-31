@@ -4,6 +4,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.pyplot as plt
 from windrose import WindroseAxes
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 # Custom xarray accessor for wind data operations
 @xr.register_dataset_accessor("wind_cube")
@@ -375,10 +377,9 @@ class ReadWindCubeAccessor:
         return ax
 
     
-    def generate_wind_distribution_table(self, height, speed_thresholds=None, direction_bins=None, period=None):
+    def generate_wind_distribution_table(self, height, speed_thresholds=None, direction_bins=None, period=None, mode='accumulate'):
         """
-        Generate a cumulative wind distribution table where each row represents the cumulative frequency 
-        for wind speeds below a given threshold, and each column represents wind directions ±15° around a central value.
+        Generate a cumulative or binned wind distribution table.
         
         Parameters:
         -----------
@@ -395,24 +396,29 @@ class ReadWindCubeAccessor:
             The specific period to filter by. Can be a month ('January', 'February', etc.) or a season ('DJF', 'JJA', etc.).
             If None, the distribution will be calculated for the entire dataset.
 
+        mode : str, optional
+            The mode of calculation. Either 'accumulate' for cumulative probabilities or 'bins' for binned probabilities. Default is 'accumulate'.
+
         Returns:
         --------
         pd.DataFrame
-            A DataFrame representing the wind distribution table, where rows are cumulative wind speed thresholds, 
+            A DataFrame representing the wind distribution table, where rows represent wind speed thresholds or bins, 
             columns are wind direction bins (covering ±15°), and values are percentages of occurrence (formatted to 2 decimal places).
         """
         
         # Default thresholds if none provided
-        if speed_thresholds is None:
+        if speed_thresholds is None and mode == 'accumulate':
             speed_thresholds = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32]
+        elif speed_thresholds is None and mode == 'bins':
+            speed_thresholds = np.arange(0, 33, 1)  # Default bins from 0 to 32 m/s with 1 m/s width
+        
         if direction_bins is None:
             direction_bins = np.arange(0, 361, 30)  # Centered on 0°, 30°, 60°, etc.
 
         # Retrieve wind speed and direction for the specified height
         wind_speed = self.get_variable(height, 'Wind Speed (m/s)')
         wind_direction = self.get_variable(height, 'Wind Direction (°)')
-        time = wind_speed['time']
-
+        
         # Filter data based on the period (month or season)
         if period:
             # Define seasonal periods for meteorological seasons
@@ -442,20 +448,39 @@ class ReadWindCubeAccessor:
         # Bin wind directions (±15° around the center)
         wind_df['Direction Bin'] = pd.cut(wind_df['Wind Direction (°)'], bins=np.arange(-15, 375, 30), right=False, labels=direction_bins[:-1])
 
-        # Create an empty DataFrame to hold the cumulative wind distribution
-        wind_distribution = pd.DataFrame(index=speed_thresholds, columns=direction_bins[:-1])
+        if mode == 'accumulate':
+            # Create an empty DataFrame to hold the wind distribution
+            wind_distribution = pd.DataFrame(index=speed_thresholds, columns=direction_bins[:-1])
 
-        # Calculate cumulative frequencies for each threshold
-        for threshold in speed_thresholds:
-            # Select all data points with wind speed less than or equal to the current threshold
-            wind_subset = wind_df[wind_df['Wind Speed (m/s)'] <= threshold]
+            # Calculate cumulative frequencies for each threshold
+            for threshold in speed_thresholds:
+                # Select all data points with wind speed less than or equal to the current threshold
+                wind_subset = wind_df[wind_df['Wind Speed (m/s)'] <= threshold]
 
-            # Calculate the frequency distribution for this subset
-            direction_distribution = pd.crosstab(wind_subset['Direction Bin'], columns='Frequency', normalize='all') * 100
+                # Calculate the frequency distribution for this subset
+                direction_distribution = pd.crosstab(wind_subset['Direction Bin'], columns='Frequency', normalize='all') * 100
 
-            # Add the values to the table
-            for direction in direction_bins[:-1]:
-                wind_distribution.loc[threshold, direction] = direction_distribution.loc[direction, 'Frequency'] if direction in direction_distribution.index else 0
+                # Add the values to the table
+                for direction in direction_bins[:-1]:
+                    wind_distribution.loc[threshold, direction] = direction_distribution.loc[direction, 'Frequency'] if direction in direction_distribution.index else 0
+
+        elif mode == 'bins':
+            # Create an empty DataFrame to hold the wind distribution
+            wind_distribution = pd.DataFrame(index=[f'{start}-{end}' for start, end in zip(speed_thresholds[:-1], speed_thresholds[1:])], columns=direction_bins[:-1])
+
+            # Calculate binned frequencies for each bin range
+            for i in range(len(speed_thresholds) - 1):
+                # Select all data points within the current bin range
+                bin_start = speed_thresholds[i]
+                bin_end = speed_thresholds[i + 1]
+                wind_subset = wind_df[(wind_df['Wind Speed (m/s)'] >= bin_start) & (wind_df['Wind Speed (m/s)'] < bin_end)]
+
+                # Calculate the frequency distribution for this subset
+                direction_distribution = pd.crosstab(wind_subset['Direction Bin'], columns='Frequency', normalize='all') * 100
+
+                # Add the values to the table
+                for direction in direction_bins[:-1]:
+                    wind_distribution.loc[f'{bin_start}-{bin_end}', direction] = direction_distribution.loc[direction, 'Frequency'] if direction in direction_distribution.index else 0
 
         # Add a column for the "Omni" (all directions) distribution
         wind_distribution['Omni'] = wind_distribution.sum(axis=1)
@@ -475,9 +500,125 @@ class ReadWindCubeAccessor:
         wind_distribution = wind_distribution.map(lambda x: f'{x:.2f}' if isinstance(x, (float, int)) else x)
 
         # Rename the index and columns
-        wind_distribution.index = [f'< {int(i)}' for i in wind_distribution.index[:-3]] + ['Total', 'Mean', 'Maximum']
+        if mode == 'accumulate':
+            wind_distribution.index = [f'< {int(i)}' for i in wind_distribution.index[:-3]] + ['Total', 'Mean', 'Maximum']
+        elif mode == 'bins':
+            wind_distribution.index = list(wind_distribution.index[:-3]) + ['Total', 'Mean', 'Maximum']
+
+        # Add a multi-level header to the columns to include wind direction labels
+        direction_labels = ["N", "NNE", "ENE", "E", "ESE", "SSE", "S", "SSW", "WSW", "W", "WNW", "NNW", "Omni"]
+        wind_distribution.columns = pd.MultiIndex.from_tuples(
+            [(label, f"{deg}°") if label != "Omni" else ("Omni", "") for label, deg in zip(direction_labels, list(direction_bins[:-1]) + [None])],
+            names=["Direction", "Degrees"]
+        )
 
         return wind_distribution
+
+    def generate_data_coverage_table(self, height, frequency='D', plot=False):
+        """
+        Generate a data coverage table to check the amount of missing data and optionally plot it.
+        
+        Parameters:
+        -----------
+        height : int
+            The height at which to calculate the data coverage.
+
+        frequency : str, optional
+            The frequency for resampling the data. Default is 'D' for daily frequency.
+
+        plot : bool, optional
+            Whether to plot the data coverage table. Default is False.
+
+        Returns:
+        --------
+        pd.DataFrame
+            A DataFrame representing the data coverage table, where rows represent months and columns represent days.
+        """
+        # Retrieve wind speed data for the specified height
+        wind_speed = self.get_variable(height, 'Wind Speed (m/s)')
+
+        # Resample the dataset to the specified frequency
+        resampled_data = wind_speed.resample(time=frequency).count()
+
+        # Create a DataFrame to hold the coverage information
+        coverage_df = resampled_data.to_dataframe().reset_index()
+        coverage_df['month'] = coverage_df['time'].dt.to_period('M')
+        coverage_df['day'] = coverage_df['time'].dt.day
+
+        # Pivot the table to create a month x day structure
+        coverage_table = coverage_df.pivot_table(index='month', columns='day', values='Wind Speed (m/s)', aggfunc='sum')
+
+        # Calculate the percentage of data coverage for each cell
+        max_count_per_day = resampled_data.max()
+        coverage_table = (coverage_table / float(max_count_per_day)) * 100
+
+        if plot:
+            # Plot the coverage table
+            plt.figure(figsize=(17, 10))
+            sns.heatmap(coverage_table, cmap='RdYlBu', linewidths=0.5, annot=True, fmt=".0f", cbar_kws={'label': 'Cobertura [%]'}, linecolor='black')
+            plt.title(f'Cobertura de Dados - Altura: {height} m')
+            plt.xlabel('Dia do Mês')
+            plt.ylabel('Mês e Ano')
+
+        return coverage_table
+
+    def generate_average_wind_speed_table(self, height, plot=False):
+        """
+        Generate a table with the average wind speed for each hour of the day, separated by month, and grouped by seasons and globally.
+        Optionally, plot the table as a heatmap.
+        
+        Parameters:
+        -----------
+        height : int
+            The height at which to calculate the average wind speed.
+
+        plot : bool, optional
+            Whether to plot the average wind speed table. Default is False.
+
+        Returns:
+        --------
+        pd.DataFrame
+            A DataFrame representing the average wind speed table, where rows represent hours of the day, columns represent months, 
+            seasons, and a global average, and values are the average wind speed (formatted to 2 decimal places).
+        """
+        # Retrieve wind speed data for the specified height
+        wind_speed = self.get_variable(height, 'Wind Speed (m/s)')
+
+        # Group by hour and month to calculate the average wind speed
+        wind_speed_df = wind_speed.to_dataframe().reset_index()
+        wind_speed_df['hour'] = wind_speed_df['time'].dt.hour
+        wind_speed_df['month'] = wind_speed_df['time'].dt.month
+
+        # Pivot the table to create an hour x month structure
+        average_speed_table = wind_speed_df.pivot_table(index='hour', columns='month', values='Wind Speed (m/s)', aggfunc='mean')
+
+        # Add columns for seasonal and global averages
+        seasons = {
+            'Verão': [12, 1, 2],
+            'Outono': [3, 4, 5],
+            'Inverno': [6, 7, 8],
+            'Primavera': [9, 10, 11]
+        }
+        for season, months in seasons.items():
+            average_speed_table[season] = average_speed_table[months].mean(axis=1)
+        average_speed_table['Global'] = average_speed_table.mean(axis=1)
+
+        # Add a row for the monthly average
+        monthly_average = average_speed_table.mean(axis=0)
+        average_speed_table.loc['Global'] = monthly_average
+
+        # Format the table to have only 2 decimal places
+        average_speed_table = average_speed_table.map(lambda x: f'{x:.2f}' if pd.notnull(x) else x)
+
+        if plot:
+            # Plot the average wind speed table
+            plt.figure(figsize=(18, 10))
+            sns.heatmap(average_speed_table.astype(float), cmap='RdYlGn_r', linewidths=0.5, annot=True, fmt=".2f", cbar_kws={'label': 'V/Vmax'}, linecolor='black')
+            plt.title(f'Velocidade Média do Vento - Altura: {height} m')
+            plt.xlabel('Mês/Estação')
+            plt.ylabel('Hora do Dia')
+
+        return average_speed_table
 
 if __name__ == "__main__":
     # Example usage
@@ -489,12 +630,13 @@ if __name__ == "__main__":
     dataset = ds_accessor.dataset
     print(dataset)
 
-    # # Compute the detrended standard deviation for wind speed at 40m
-    # std_detrended_ws40m = ds_accessor.compute_std_detrended_data(40, 'Wind Speed (m/s)')
-    # plt.plot(dataset.time, std_detrended_ws40m), plt.title('Detrended Wind Speed std at 40m'), plt.xlabel('Time'), plt.ylabel('Wind Speed (m/s)'), plt.show()
+    # Compute the detrended standard deviation for wind speed at 40m
+    std_detrended_ws40m = ds_accessor.compute_std_detrended_data(40, 'Wind Speed (m/s)')
+    plt.plot(dataset.time, std_detrended_ws40m), plt.title('Detrended Wind Speed std at 40m'), plt.xlabel('Time'), plt.ylabel('Wind Speed (m/s)'), plt.show()
 
-    # # Plot wind speed
+    # Plot wind speed
     ds_accessor.plot_variable(40, 'Wind Speed (m/s)')
+    plt.show()
 
     # Subset the dataset some time steps and plot
     subset_accessor = ds_accessor.isel(time=slice(0, 50))
@@ -507,6 +649,10 @@ if __name__ == "__main__":
     # Get a pandas DataFrame with wind speed and direction for a specified height
     wind_df = ds_accessor.get_wind_df(40)
     print(wind_df)
+
+    # Plotar a rosa dos ventos para 140 metros no mês de janeiro
+    ax = ds_accessor.plot_wind_rose(40, colormap='coolwarm', period='January')
+    plt.show()
 
     # Plot wind rose without averaging
     ds_accessor.plot_wind_rose(40)
@@ -524,6 +670,13 @@ if __name__ == "__main__":
     wind_distribution_table = ds_accessor.generate_wind_distribution_table(40)
     print(wind_distribution_table)
 
-    wind_distribution_january = ds_accessor.generate_wind_distribution_table(40, period='January')
+    wind_distribution_january = ds_accessor.generate_wind_distribution_table(40, period='January', mode='bins')
     print(wind_distribution_january)
 
+    coverage_table = data_coverage_table = ds_accessor.generate_data_coverage_table(40, plot=True)
+    print(coverage_table)
+    plt.show()
+
+    average_wind_speed_table = ds_accessor.generate_average_wind_speed_table(40, plot=True)
+    print(average_wind_speed_table)
+    plt.show()
