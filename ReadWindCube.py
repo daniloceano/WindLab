@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from windrose import WindroseAxes
 import seaborn as sns
+from itertools import combinations
 
 # Custom xarray accessor for wind data operations
 @xr.register_dataset_accessor("wind_cube")
@@ -616,13 +617,195 @@ class ReadWindCubeAccessor:
             plt.ylabel('Hora do Dia')
 
         return average_speed_table
+    
+    def compute_max_wind_direction_change(self, height, second_window=10):
+        """
+        Calculate the maximum change in wind direction and the mean wind speed over a specified rolling time window.
+
+        This function retrieves wind direction and speed data for a specified height and computes the maximum change
+        in wind direction, as well as the mean wind speed, over a given time window. The values are calculated
+        using a rolling window that moves over the data with a specified time duration.
+
+        Parameters:
+        -----------
+        height : int
+            The height (in meters) at which to calculate the maximum change in wind direction and mean speed.
+        second_window : int, optional
+            The time window (in seconds) over which to calculate the maximum change in wind direction and
+            the mean wind speed. Default is 10 seconds.
+
+        Returns:
+        --------
+        DataFrame
+            A DataFrame with the following columns:
+            - 'Wind Direction (°)': Original wind direction data (in degrees).
+            - 'Wind Speed (m/s)': Original wind speed data (in meters per second).
+            - '{second_window}s Max Direction Change (°)': Maximum change in wind direction over the given time window (in degrees).
+            - '{second_window}s Mean Speed (m/s)': Mean wind speed over the given time window (in meters per second).
+        
+        Notes:
+        ------
+        - The rolling window uses the specified `second_window` duration to compute statistics for each point.
+        - The maximum change in wind direction is calculated as the difference between the maximum and minimum wind direction
+        values within the rolling window.
+        - The mean wind speed is computed over the same rolling window.
+        - The rolling window is inclusive of the current timestamp and moves forward in time.
+        - Missing data (NaN values) are dropped prior to applying the rolling calculations to ensure accurate results.
+
+        Example:
+        --------
+        >>> df_result = compute_max_wind_direction_change(height=100, second_window=10)
+        >>> print(df_result.head())
+        
+        This would return a DataFrame containing the original wind direction and speed data, along with the calculated
+        maximum direction change and mean speed for each rolling window of 10 seconds.
+        """
+        # Retrieve wind direction data for the specified height
+        wind_direction = self.get_variable(height, 'Wind Direction (°)')
+        wind_speed = self.get_variable(height, 'Wind Speed (m/s)')
+
+        # Convert to pandas DataFrames
+        df_wind_direction = wind_direction.to_dataframe().drop('height', axis=1)
+        df_wind_speed = wind_speed.to_dataframe().drop('height', axis=1)
+        df = pd.concat([df_wind_direction, df_wind_speed], axis=1)
+        df = df.dropna()
+
+        # Compute rolling max and min for the time window specified
+        rolling_window = f'{second_window}s'
+        
+        # Use rolling with a fixed window size determined by the seconds
+        max_direction = df['Wind Direction (°)'].rolling(rolling_window, min_periods=1).max()
+        min_direction = df['Wind Direction (°)'].rolling(rolling_window, min_periods=1).min()
+        mean_speed = df['Wind Speed (m/s)'].rolling(rolling_window, min_periods=1).mean()
+
+        # Calculate the maximum change as the difference between rolling max and min
+        df[f'{second_window}s Max Direction Change (°)'] = max_direction - min_direction
+        df[f'{second_window}s Mean Speed (m/s)'] = mean_speed
+
+        return df
+
+    def generate_maximum_wind_change_table(self, height, second_window=10):
+        """
+        Generate a frequency table of maximum changes in wind direction and the corresponding mean wind speed over a specified rolling time window.
+
+        This function generates a table representing the frequency of occurrences of specific wind speed ranges (rows)
+        and wind direction change ranges (columns). The purpose of the table is to analyze how often certain levels of
+        wind direction change correspond to particular wind speed averages within the given time window.
+
+        Parameters:
+        -----------
+        height : int
+            The height (in meters) at which to calculate the maximum change in wind direction and mean speed.
+        second_window : int, optional
+            The time window (in seconds) over which to calculate the maximum change in wind direction and
+            the mean wind speed. Default is 10 seconds.
+
+        Returns:
+        --------
+        DataFrame
+            A DataFrame representing the frequency counts for the different combinations of mean wind speed intervals
+            (rows) and direction change intervals (columns).
+        
+        Notes:
+        ------
+        - The table is created with wind speed intervals as rows and direction change intervals as columns.
+        - The function bins the data into predefined speed and direction change intervals and populates a table
+        with the frequency of occurrences.
+        """
+        df = self.compute_max_wind_direction_change(height, second_window)
+
+        # Define bins for wind speed and direction change
+        speed_thresholds = np.arange(0, 21, 1)
+        direction_bins = np.arange(0, 36, 5)
+
+        # DataFrame with speed intervals on rows and direction change intervals on columns
+        max_wind_change_table = pd.DataFrame(
+            index=[f'{start}-{end}' for start, end in zip(speed_thresholds[:-1], speed_thresholds[1:])],
+            columns=[f'{start}-{end}' for start, end in zip(direction_bins[:-1], direction_bins[1:])]
+        )
+        
+        # Add row for values larger than the last threshold
+        max_wind_change_table.loc[f'{speed_thresholds[-1]}+'] = 0
+
+        # Add column for values larger than the last threshold
+        max_wind_change_table[f'{direction_bins[-1]}+'] = 0
+
+        # Calculate binned frequencies for each bin range
+        for i in range(len(speed_thresholds) - 1):
+            # Select all data points within the current speed bin range
+            bin_start = speed_thresholds[i]
+            bin_end = speed_thresholds[i + 1]
+            wind_speed_subset = df[(df[f'{second_window}s Mean Speed (m/s)'] >= bin_start) & (df[f'{second_window}s Mean Speed (m/s)'] < bin_end)]
+            
+            for j in range(len(direction_bins) - 1):
+                # Select all data points within the current direction change bin range
+                direction_start = direction_bins[j]
+                direction_end = direction_bins[j + 1]
+                count = wind_speed_subset[(wind_speed_subset[f'{second_window}s Max Direction Change (°)'] >= direction_start) & 
+                                        (wind_speed_subset[f'{second_window}s Max Direction Change (°)'] < direction_end)].shape[0]
+                max_wind_change_table.iloc[i, j] = count
+
+        # Populate the last row and column for values greater than the final thresholds
+        wind_speed_above = df[df[f'{second_window}s Mean Speed (m/s)'] >= speed_thresholds[-1]]
+        for j in range(len(direction_bins) - 1):
+            direction_start = direction_bins[j]
+            direction_end = direction_bins[j + 1]
+            count = wind_speed_above[(wind_speed_above[f'{second_window}s Max Direction Change (°)'] >= direction_start) &
+                                    (wind_speed_above[f'{second_window}s Max Direction Change (°)'] < direction_end)].shape[0]
+            max_wind_change_table.iloc[-1, j] = count
+
+        direction_above = df[df[f'{second_window}s Max Direction Change (°)'] >= direction_bins[-1]]
+        for i in range(len(speed_thresholds) - 1):
+            bin_start = speed_thresholds[i]
+            bin_end = speed_thresholds[i + 1]
+            count = direction_above[(direction_above[f'{second_window}s Mean Speed (m/s)'] >= bin_start) &
+                                    (direction_above[f'{second_window}s Mean Speed (m/s)'] < bin_end)].shape[0]
+            max_wind_change_table.iloc[i, -1] = count
+
+        # Populate the last cell (bottom-right) for values greater than both thresholds
+        count = direction_above[direction_above[f'{second_window}s Mean Speed (m/s)'] >= speed_thresholds[-1]].shape[0]
+        max_wind_change_table.iloc[-1, -1] = count
+
+        # Add "total" column and row
+        max_wind_change_table.loc['total'] = max_wind_change_table.sum(axis=0)
+        max_wind_change_table['total'] = max_wind_change_table.sum(axis=1)
+
+        # Add "percentage" column and row
+        max_wind_change_table.loc['percentage'] = (max_wind_change_table.loc['total'] / max_wind_change_table['total'][ 'total']) * 100
+        max_wind_change_table['percentage'] = (max_wind_change_table['total'] / max_wind_change_table['total'][ 'total']) * 100
+        max_wind_change_table.loc['percentage', 'percentage'] = ''
+
+        return max_wind_change_table
+
+    def plot_max_wind_change_mean_speed(self, height, second_window=10):
+        """
+        Plot the maximum wind direction change as a function of the mean wind speed.
+        """
+        df = self.compute_max_wind_direction_change(height, second_window)
+        ax = df.plot(x=f'{second_window}s Mean Speed (m/s)', y=f'{second_window}s Max Direction Change (°)', kind='scatter', figsize=(12, 8))
+        ax.set_xlabel('Mean Wind Speed (m/s)')
+        ax.set_ylabel('Maximum Wind Direction Change (°)')
+        ax.set_title(f'Maximum Wind Direction Change vs. Mean Wind Speed at {height} m')
+        return ax
 
 if __name__ == "__main__":
     # Example usage
     # Create an instance of the accessor and load data from the file
-    ds_accessor = ReadWindCubeAccessor("./dummy_data_2023.rtd")
+    ds_accessor = ReadWindCubeAccessor("Data/WLS866-104_2024_08_01__00_00_00.rtd")
     ds_accessor.load_data()
 
     # Access the xarray.Dataset directly
     dataset = ds_accessor.dataset
     print(dataset)
+
+    # Compute maximum wind direction change for a specific height
+    df = ds_accessor.compute_max_wind_direction_change(40)
+    print(df[:20])
+
+    # Generate the maximum wind direction change table for a specific height
+    df = ds_accessor.generate_maximum_wind_change_table(40)
+    print(df)
+
+    # Plot the maximum wind direction change as a function of the mean wind speed
+    ax = ds_accessor.plot_max_wind_change_mean_speed(40)
+    plt.show()
