@@ -3,12 +3,14 @@ import xarray as xr
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+from windlab.processing.utils import compute_max_wind_direction_change
 
+@xr.register_dataset_accessor("wind_table")
 class WindTableProcessor:
     def __init__(self, dataset: xr.Dataset):
-        self.dataset = dataset
+        self._dataset = dataset
 
-    def generate_wind_distribution_table(self, height, speed_thresholds=None, direction_bins=None, period=None, mode='accumulate'):
+    def generate_wind_distribution_table(self, height, speed_thresholds=None, direction_bins=None, period=None, mode='bins'):
         """
         Generate a cumulative or binned wind distribution table.
         
@@ -47,8 +49,8 @@ class WindTableProcessor:
             direction_bins = np.arange(0, 361, 30)  # Centered on 0°, 30°, 60°, etc.
 
         # Retrieve wind speed and direction for the specified height
-        wind_speed = self.get_variable(height, 'Wind Speed (m/s)')
-        wind_direction = self.get_variable(height, 'Wind Direction (°)')
+        wind_speed = self._dataset['Wind Speed (m/s)'].sel(height=height)
+        wind_direction = self._dataset['Wind Direction (°)'].sel(height=height)
         
         # Filter data based on the period (month or season)
         if period:
@@ -166,7 +168,7 @@ class WindTableProcessor:
             A DataFrame representing the data coverage table, where rows represent months and columns represent days.
         """
         # Retrieve wind speed data for the specified height
-        wind_speed = self.get_variable(height, 'Wind Speed (m/s)')
+        wind_speed = self._dataset['Wind Speed (m/s)'].sel(height=height)
 
         # Resample the dataset to the specified frequency
         resampled_data = wind_speed.resample(time=frequency).count()
@@ -186,12 +188,16 @@ class WindTableProcessor:
         if plot:
             # Plot the coverage table
             plt.figure(figsize=(17, 10))
-            sns.heatmap(coverage_table, cmap='RdYlBu', linewidths=0.5, annot=True, fmt=".0f", cbar_kws={'label': 'Cobertura [%]'}, linecolor='black')
-            plt.title(f'Cobertura de Dados - Altura: {height} m')
-            plt.xlabel('Dia do Mês')
-            plt.ylabel('Mês e Ano')
+            ax = sns.heatmap(coverage_table, cmap='RdYlBu', linewidths=0.5, annot=True, fmt=".0f", cbar_kws={'label': 'Cobertura [%]'}, linecolor='black')
+            ax.set_title(f'Cobertura de Dados - Altura: {height} m')
+            ax.set_xlabel('Dia do Mês')
+            ax.set_ylabel('Mês e Ano')
+            plt.show()
 
-        return coverage_table
+            return ax, coverage_table
+
+        else:
+            return coverage_table
     
     def generate_average_wind_speed_table(self, height, plot=False):
         """
@@ -213,7 +219,7 @@ class WindTableProcessor:
             seasons, and a global average, and values are the average wind speed (formatted to 2 decimal places).
         """
         # Retrieve wind speed data for the specified height
-        wind_speed = self.get_variable(height, 'Wind Speed (m/s)')
+        wind_speed = self._dataset['Wind Speed (m/s)'].sel(height=height)
 
         # Group by hour and month to calculate the average wind speed
         wind_speed_df = wind_speed.to_dataframe().reset_index()
@@ -244,14 +250,18 @@ class WindTableProcessor:
         if plot:
             # Plot the average wind speed table
             plt.figure(figsize=(18, 10))
-            sns.heatmap(average_speed_table.astype(float), cmap='RdYlGn_r', linewidths=0.5, annot=True, fmt=".2f", cbar_kws={'label': 'V/Vmax'}, linecolor='black')
-            plt.title(f'Velocidade Média do Vento - Altura: {height} m')
-            plt.xlabel('Mês/Estação')
-            plt.ylabel('Hora do Dia')
-
-        return average_speed_table
+            ax = sns.heatmap(average_speed_table.astype(float), cmap='RdYlGn_r', linewidths=0.5, annot=True, fmt=".2f", cbar_kws={'label': 'V/Vmax'}, linecolor='black')
+            ax.set_title(f'Velocidade Média do Vento - Altura: {height} m')
+            ax.set_xlabel('Mês/Estação')
+            ax.set_ylabel('Hora do Dia')
+            plt.show()
+            
+            return ax, average_speed_table
+        
+        else:
+            return average_speed_table
     
-    def generate_maximum_wind_change_table(df, height, second_window=10):
+    def generate_maximum_wind_change_table(self, height, second_window=10, plot=False):
         """
         Generate a frequency table of maximum changes in wind direction and the corresponding mean wind speed over a specified rolling time window.
 
@@ -261,8 +271,8 @@ class WindTableProcessor:
 
         Parameters:
         -----------
-        df : pd.DataFrame
-            The DataFrame returned by the compute_max_wind_direction_change function.
+        height : int
+            The height at which to calculate the maximum change in wind direction and the mean wind speed.
         second_window : int, optional
             The time window (in seconds) over which to calculate the maximum change in wind direction and
             the mean wind speed. Default is 10 seconds.
@@ -279,6 +289,10 @@ class WindTableProcessor:
         - The function bins the data into predefined speed and direction change intervals and populates a table
         with the frequency of occurrences.
         """
+        # Compute the maximum wind direction change for the specified height and second window
+        data = self._dataset.sel(height=height)
+        df = compute_max_wind_direction_change(data, second_window=second_window)
+
         # Define bins for wind speed and direction change
         speed_thresholds = np.arange(0, 21, 1)
         direction_bins = np.arange(0, 36, 5)
@@ -306,8 +320,8 @@ class WindTableProcessor:
                 # Select all data points within the current direction change bin range
                 direction_start = direction_bins[j]
                 direction_end = direction_bins[j + 1]
-                count = wind_speed_subset[(wind_speed_subset[f'{second_window}s Max Direction Change (°)'] >= direction_start) & 
-                                        (wind_speed_subset[f'{second_window}s Max Direction Change (°)'] < direction_end)].shape[0]
+                count = wind_speed_subset[(wind_speed_subset['Max Change in Direction (°)'] >= direction_start) & 
+                                        (wind_speed_subset['Max Change in Direction (°)'] < direction_end)].shape[0]
                 max_wind_change_table.iloc[i, j] = count
 
         # Populate the last row and column for values greater than the final thresholds
@@ -315,11 +329,11 @@ class WindTableProcessor:
         for j in range(len(direction_bins) - 1):
             direction_start = direction_bins[j]
             direction_end = direction_bins[j + 1]
-            count = wind_speed_above[(wind_speed_above[f'{second_window}s Max Direction Change (°)'] >= direction_start) &
-                                    (wind_speed_above[f'{second_window}s Max Direction Change (°)'] < direction_end)].shape[0]
+            count = wind_speed_above[(wind_speed_above['Max Change in Direction (°)'] >= direction_start) &
+                                    (wind_speed_above['Max Change in Direction (°)'] < direction_end)].shape[0]
             max_wind_change_table.iloc[-1, j] = count
 
-        direction_above = df[df[f'{second_window}s Max Direction Change (°)'] >= direction_bins[-1]]
+        direction_above = df[df['Max Change in Direction (°)'] >= direction_bins[-1]]
         for i in range(len(speed_thresholds) - 1):
             bin_start = speed_thresholds[i]
             bin_end = speed_thresholds[i + 1]
@@ -340,4 +354,14 @@ class WindTableProcessor:
         max_wind_change_table['percentage'] = (max_wind_change_table['total'] / max_wind_change_table['total'][ 'total']) * 100
         max_wind_change_table.loc['percentage', 'percentage'] = ''
 
-        return max_wind_change_table
+        if plot:
+            fig, ax = plt.subplots(figsize=(12, 8))
+            ax.plot(df[f'{second_window}s Mean Speed (m/s)'], df['Max Change in Direction (°)'], 'o')
+            ax.set_xlabel('Mean Wind Speed (m/s)')
+            ax.set_ylabel('Maximum Wind Direction Change (°)')
+            ax.set_title(f'{second_window}s Maximum Wind Direction Change vs. Mean Wind Speed')
+            plt.show()
+            return ax, max_wind_change_table
+
+        else:
+            return max_wind_change_table

@@ -4,11 +4,13 @@ import xarray as xr
 import pandas as pd
 import seaborn as sns
 from windrose import WindroseAxes
+from windlab.processing.utils import compute_max_wind_direction_change
 
+@xr.register_dataset_accessor("wind_graph")
 class WindGraphGenerator:
 
     def __init__(self, dataset: xr.Dataset):
-        self.dataset = dataset
+        self._dataset = dataset
 
     def plot_variable(self, height: int, variable: str='Wind Speed (m/s)'):
         """
@@ -25,7 +27,7 @@ class WindGraphGenerator:
         --------
         >>> ds_accessor.plot_variable(40, 'Wind Speed (m/s)')
         """
-        data = self.get_variable(height, variable=variable)
+        data = self._dataset[variable].sel(height=height)
         fig = plt.figure(figsize=(8, 6))
         ax = fig.add_subplot(111)
         ax.plot(data['time'], data)
@@ -34,7 +36,7 @@ class WindGraphGenerator:
         ax.set_ylabel(variable)
         return ax
     
-    def plot_wind_rose(self, height, averaging_window=None, colormap='viridis', period=None):
+    def plot_wind_rose(self, height: int, averaging_window=None, colormap='viridis', period=None):
         """
         Plot a wind rose using wind speed and direction data, with an option to average the data over a specified time window,
         and filter by a specific month or season.
@@ -67,9 +69,8 @@ class WindGraphGenerator:
         ax.figure.savefig('windrose_plot.png')  # Example of saving the figure
         """
         # Retrieve wind speed and direction for the specified height
-        wind_speed = self.get_variable(height, 'Wind Speed (m/s)')
-        wind_direction = self.get_variable(height, 'Wind Direction (°)')
-        time = wind_speed['time']
+        wind_speed = self._dataset['Wind Speed (m/s)'].sel(height=height)
+        wind_direction = self._dataset['Wind Direction (°)'].sel(height=height)
 
         # Filter data based on the period (month or season)
         if period:
@@ -112,26 +113,4 @@ class WindGraphGenerator:
         ax.legend()
 
         # Return the WindroseAxes instance
-        return ax
-    
-    def plot_max_wind_change_mean_speed(df, second_window=10):
-        """
-        Plot the maximum wind direction change as a function of the mean wind speed.
-
-        Parameters:
-        -----------
-        df : pandas.DataFrame
-            The DataFrame returned by the compute_max_wind_direction_change function.
-        second_window : int, optional
-            The second window size to use for resampling the data (default is 10).
-
-        Returns:
-        --------
-        ax : matplotlib.axes.Axes
-            The matplotlib axes object containing the plot.
-        """
-        ax = df.plot(x=f'{second_window}s Mean Speed (m/s)', y=f'{second_window}s Max Direction Change (°)', kind='scatter', figsize=(12, 8))
-        ax.set_xlabel('Mean Wind Speed (m/s)')
-        ax.set_ylabel('Maximum Wind Direction Change (°)')
-        ax.set_title(f'{second_window}s Maximum Wind Direction Change vs. Mean Wind Speed')
         return ax

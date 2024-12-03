@@ -1,60 +1,51 @@
+from glob import glob
 import matplotlib.pyplot as plt
 from windlab import WindDataAccessor
 
-# Create an instance of the accessor and load data from the file
-ds = WindDataAccessor.windcube(file_path='data/dummy_data_2023.rtd')
+### Reading data ###
 
-# Access the xarray.Dataset directly
-dataset = ds.dataset
-print(dataset)
+# Open the data using the WindDataAccessor and specify the reference height
+ds = WindDataAccessor.windcube("data/dummy_data_2023.rtd", reference_height=40)
+height = float(ds.height[0])
 
-# # Compute the detrended standard deviation for wind speed at 40m
-# std_detrended_ws40m = ds_accessor.compute_std_detrended_data(40, 'Wind Speed (m/s)')
-# plt.plot(dataset.time, std_detrended_ws40m), plt.title('Detrended Wind Speed std at 40m'), plt.xlabel('Time'), plt.ylabel('Wind Speed (m/s)'), plt.show()
+### Plotting ###
 
-# # Plot wind speed
-# ds_accessor.plot_variable(40, 'Wind Speed (m/s)')
-# plt.show()
+# Plot wind speed for a specific height and customize the plot
+ax = ds.wind_graph.plot_variable(height=height, variable='Wind Speed (m/s)')
+ax.set = ax.set_title(f'Wind Speed at {height}m')
+ax.tick_params(axis='x',rotation=45)
+plt.show() 
 
-# # Subset the dataset some time steps and plot
-# subset_accessor = ds_accessor.isel(time=slice(0, 50))
-# subset_accessor.plot_variable(40, 'Wind Speed (m/s)')
+# Plot wind rose without averaging
+ax = ds.wind_graph.plot_wind_rose(height)
+plt.show()
 
-# # Subset the dataset for a specific time slice and plot
-# subset_accessor = ds_accessor.sel(time=slice('2024-08-01T00:00:00', '2024-08-01T02:00:00'))
-# subset_accessor.plot_variable(40, 'Wind Speed (m/s)')
+# Plot wind rose with averaging
+ax = ds.wind_graph.plot_wind_rose(height, averaging_window='1h', colormap='coolwarm')
+ax.set_title("Wind Rose at 40m", fontsize=16)
+plt.show()
 
-# # Get a pandas DataFrame with wind speed and direction for a specified height
-# wind_df = ds_accessor.get_wind_df(40)
-# print(wind_df)
+# Plot wind rose for 40 meters, filtering for summer (DJF)
+ax = ds.wind_graph.plot_wind_rose(height, colormap='coolwarm', period='DJF')
+plt.show()
 
-# # Plotar a rosa dos ventos para 140 metros no mês de janeiro
-# ax = ds_accessor.plot_wind_rose(40, colormap='coolwarm', period='January')
-# plt.show()
+## Tables ###
 
-# # Plot wind rose without averaging
-# ds_accessor.plot_wind_rose(40)
-# plt.show()
+df_wind_distribution = ds.wind_table.generate_wind_distribution_table(height)
+print(df_wind_distribution)
 
-# # Plot wind rose with averaging
-# ax = ds_accessor.plot_wind_rose(40, averaging_window='1h', colormap='coolwarm')
-# ax.set_title("Wind Rose at 40m", fontsize=16)
-# plt.show()
+df_wind_distribution = ds.wind_table.generate_wind_distribution_table(height, mode='accumulate')
+print('\n\n', df_wind_distribution)
 
-# # Plot wind rose for 40 meters, filtering for summer (DJF)
-# ax = ds_accessor.plot_wind_rose(40, colormap='coolwarm', period='DJF')
-# plt.show()
+ax, df_data_coverage = ds.wind_table.generate_data_coverage_table(height, plot=True)
+print('\n\n', df_data_coverage)
 
-# wind_distribution_table = ds_accessor.generate_wind_distribution_table(40)
-# print(wind_distribution_table)
+ax, df_average_wind_speed = ds.wind_table.generate_average_wind_speed_table(height, plot=True)
+print('\n\n', df_average_wind_speed)
 
-# wind_distribution_january = ds_accessor.generate_wind_distribution_table(40, period='January', mode='bins')
-# print(wind_distribution_january)
-
-# coverage_table = data_coverage_table = ds_accessor.generate_data_coverage_table(40, plot=True)
-# print(coverage_table)
-# plt.show()
-
-# average_wind_speed_table = ds_accessor.generate_average_wind_speed_table(40, plot=True)
-# print(average_wind_speed_table)
-# plt.show()
+# Compute the maximum wind change for a specific height
+# Use a list of original .rtd files as the dummy data contains only hourly data
+files = sorted(glob("./Data/WLS*.rtd"))
+ds_202408 = WindDataAccessor.windcube(files, reference_height=40)
+ax, def_max_wind_change = ds_202408.wind_table.generate_maximum_wind_change_table(height, plot=True)
+print('\n\n', def_max_wind_change)
