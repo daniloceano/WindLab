@@ -28,5 +28,5 @@ setup(
         'Programming Language :: Python :: 3',
         'Topic :: Scientific/Engineering :: Atmospheric Science',
     ],
-    python_requires='>=3.6',
+    python_requires='>=3.10',
 )
