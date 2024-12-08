@@ -1,12 +1,20 @@
 from glob import glob
 import matplotlib.pyplot as plt
 from windlab import WindDataAccessor
+from windlab.processing.utils import get_wind_df
 
 ### Reading data ###
 
 # Open the data using the WindDataAccessor and specify the reference height
-ds = WindDataAccessor.windcube("data/dummy_data_2023.rtd", reference_height=40)
+ds = WindDataAccessor.windcube("testdata/dummy_data_2023.rtd", reference_height=40)
 height = float(ds.height[0])
+
+
+### Extracting data ###
+
+# Extract wind data for a specific height in a pandas DataFrame
+df = get_wind_df(ds, height)
+print(df.head())
 
 ### Plotting ###
 
