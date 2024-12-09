@@ -1,7 +1,7 @@
 from glob import glob
 import matplotlib.pyplot as plt
 from windlab import WindDataAccessor
-from windlab.processing.utils import get_wind_df
+from windlab.processing.utils import get_wind_df, compute_std_detrended_data
 
 ### Reading data ###
 
@@ -10,11 +10,15 @@ ds = WindDataAccessor.windcube("testdata/dummy_data_2023.rtd", reference_height=
 height = float(ds.height[0])
 
 
-### Extracting data ###
+### Processing data ###
 
 # Extract wind data for a specific height in a pandas DataFrame
 df = get_wind_df(ds, height)
 print(df.head())
+
+# Compute the standard deviation for wind speed at a specific height
+std = compute_std_detrended_data(ds['Wind Speed (m/s)'].sel(height=height))
+print(std.values)
 
 ### Plotting ###
 

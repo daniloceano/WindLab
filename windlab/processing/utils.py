@@ -40,6 +40,37 @@ def get_wind_df(dataset: xr.Dataset, height: int) -> pd.DataFrame:
     
     return wind_df
 
+def compute_std_detrended_data(dataset: xr.DataArray, window_size: int=600):
+        """
+        Computes the rolling standard deviation for the specified variable at a given height, after detrending the data.
+
+        Parameters:
+        -----------
+        dataset : xarray.DataArray
+            The xarray.DataArray containing data.
+        height : int
+            The height at which to compute the rolling standard deviation.
+        variable : str, optional
+            The variable to compute the standard deviation for (default is 'Wind Speed (m/s)').
+        window_size : int, optional
+            The size of the rolling window in time steps (default is 600).
+
+        Returns:
+        --------
+        xarray.DataArray
+            The rolling standard deviation for the specified variable and height.
+        """
+        # Compute the rolling mean on the filled data
+        rolling_mean = dataset.rolling(time=window_size, min_periods=1, center=True).mean()
+
+        # Subtract the rolling mean to detrend the data
+        detrended_data = dataset - rolling_mean
+
+        # Compute the rolling standard deviation
+        rolling_std = detrended_data.rolling(time=window_size, min_periods=1, center=True).std()
+
+        return rolling_std
+
 def compute_max_wind_direction_change(dataset: xr.Dataset, second_window=10, n_jobs=-1):
     """
     Calculate the maximum change in wind direction and the mean wind speed over a specified rolling time window.
