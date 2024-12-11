@@ -121,8 +121,17 @@ def compute_max_wind_direction_change(dataset: xr.Dataset, second_window=10, n_j
     wind_speed = dataset['Wind Speed (m/s)']
 
     # Convert to pandas DataFrames
-    df_wind_direction = wind_direction.to_dataframe().drop('height', axis=1)
-    df_wind_speed = wind_speed.to_dataframe().drop('height', axis=1)
+    df_wind_direction = wind_direction.to_dataframe()
+    
+    # Check if 'height' column is present and drop it
+    if 'height' in df_wind_direction.columns:
+        df_wind_direction = df_wind_direction.drop('height', axis=1)
+
+    df_wind_speed = wind_speed.to_dataframe()
+    
+    if 'height' in df_wind_speed.columns:
+        df_wind_speed = df_wind_speed.drop('height', axis=1)
+
     df = pd.concat([df_wind_direction, df_wind_speed], axis=1)
     df = df.dropna()
 
@@ -148,23 +157,8 @@ def compute_max_wind_direction_change(dataset: xr.Dataset, second_window=10, n_j
     # Calculating the maximum change in wind direction in degrees
     df['Max Change in Direction (°)'] = df['Min Scalar Product'].apply(lambda x: np.rad2deg(np.arccos(x)))
 
-    # Function to calculate the average change in wind direction within the window
-    def mean_direction_change(window):
-        if len(window) < 2:
-            return 0  # No change if only one value is present
-        return np.mean([
-            np.abs(a - b) if np.abs(a - b) <= np.pi else 2 * np.pi - np.abs(a - b)
-            for a, b in combinations(window, 2)
-        ])
-
-    # Applying the rolling window function to calculate the mean change in direction using parallel processing
-    mean_change_results = Parallel(n_jobs=n_jobs)(
-        delayed(mean_direction_change)(df['Wind Direction (rad)'].iloc[i:i+second_window])
-        for i in range(len(df) - second_window + 1)
-    )
-    df['Mean Change in Direction (°)'] = pd.Series(mean_change_results, index=df.index[second_window - 1:]).apply(np.rad2deg)
-
-    # Calculating the mean wind speed over the rolling window
-    df[f'{second_window}s Mean Speed (m/s)'] = df['Wind Speed (m/s)'].rolling(window=second_window, min_periods=1).mean()
+    # Compute maximum and minimum wind speed within the window
+    df['Max Wind Speed (m/s)'] = df['Wind Speed (m/s)'].rolling(window=second_window, min_periods=1).max()
+    df['Min Wind Speed (m/s)'] = df['Wind Speed (m/s)'].rolling(window=second_window, min_periods=1).min()
 
     return df
