@@ -263,7 +263,7 @@ class WindTableProcessor:
     
     def generate_maximum_wind_change_table(self, height, second_window=10, plot=False):
         """
-        Generate a frequency table of maximum changes in wind direction and the corresponding mean wind speed over a specified rolling time window.
+        Generate a frequency table of maximum changes in wind direction and the corresponding wind speed over a specified rolling time window.
 
         This function generates a table representing the frequency of occurrences of specific wind speed ranges (rows)
         and wind direction change ranges (columns). The purpose of the table is to analyze how often certain levels of
@@ -314,7 +314,7 @@ class WindTableProcessor:
             # Select all data points within the current speed bin range
             bin_start = speed_thresholds[i]
             bin_end = speed_thresholds[i + 1]
-            wind_speed_subset = df[(df[f'{second_window}s Mean Speed (m/s)'] >= bin_start) & (df[f'{second_window}s Mean Speed (m/s)'] < bin_end)]
+            wind_speed_subset = df[(df['Wind Speed (m/s)'] >= bin_start) & (df['Wind Speed (m/s)'] < bin_end)]
             
             for j in range(len(direction_bins) - 1):
                 # Select all data points within the current direction change bin range
@@ -325,7 +325,7 @@ class WindTableProcessor:
                 max_wind_change_table.iloc[i, j] = count
 
         # Populate the last row and column for values greater than the final thresholds
-        wind_speed_above = df[df[f'{second_window}s Mean Speed (m/s)'] >= speed_thresholds[-1]]
+        wind_speed_above = df[df['Wind Speed (m/s)'] >= speed_thresholds[-1]]
         for j in range(len(direction_bins) - 1):
             direction_start = direction_bins[j]
             direction_end = direction_bins[j + 1]
@@ -337,12 +337,12 @@ class WindTableProcessor:
         for i in range(len(speed_thresholds) - 1):
             bin_start = speed_thresholds[i]
             bin_end = speed_thresholds[i + 1]
-            count = direction_above[(direction_above[f'{second_window}s Mean Speed (m/s)'] >= bin_start) &
-                                    (direction_above[f'{second_window}s Mean Speed (m/s)'] < bin_end)].shape[0]
+            count = direction_above[(direction_above['Wind Speed (m/s)'] >= bin_start) &
+                                    (direction_above['Wind Speed (m/s)'] < bin_end)].shape[0]
             max_wind_change_table.iloc[i, -1] = count
 
         # Populate the last cell (bottom-right) for values greater than both thresholds
-        count = direction_above[direction_above[f'{second_window}s Mean Speed (m/s)'] >= speed_thresholds[-1]].shape[0]
+        count = direction_above[direction_above['Wind Speed (m/s)'] >= speed_thresholds[-1]].shape[0]
         max_wind_change_table.iloc[-1, -1] = count
 
         # Add "total" column and row
@@ -356,12 +356,27 @@ class WindTableProcessor:
 
         if plot:
             fig, ax = plt.subplots(figsize=(12, 8))
-            ax.plot(df[f'{second_window}s Mean Speed (m/s)'], df['Max Change in Direction (°)'], 'o')
-            ax.set_xlabel('Mean Wind Speed (m/s)')
-            ax.set_ylabel('Maximum Wind Direction Change (°)')
-            ax.set_title(f'{second_window}s Maximum Wind Direction Change vs. Mean Wind Speed')
+            # Scatter plot
+            ax.plot(
+                df['Wind Speed (m/s)'],
+                df['Max Change in Direction (°)'], 'o',
+                color='#01161e',
+                alpha=0.5
+            )
+            # Add labels and title
+            ax.set_xlabel(r'Wind speed $V_\mathrm{hub}$ (m/s)', fontsize=12)
+            ax.set_ylabel(r'EDC change $\theta_e$ (deg.)', fontsize=12)
             plt.show()
             return ax, max_wind_change_table
 
         else:
             return max_wind_change_table
+        
+if __name__ == "__main__":
+    # Example usage
+    from windlab import WindDataAccessor
+    from glob import glob
+    files = sorted(glob("./Data/WLS*.rtd"))[:]
+    ds_202408 = WindDataAccessor.windcube(files, reference_height=40)
+    ax, def_max_wind_change = ds_202408.wind_table.generate_maximum_wind_change_table(190, plot=True)
+    print('\n\n', def_max_wind_change)

@@ -5,6 +5,7 @@ import xarray as xr
 import numpy as np
 from itertools import combinations
 from joblib import Parallel, delayed
+from tqdm import tqdm
 
 def get_wind_df(dataset: xr.Dataset, height: int) -> pd.DataFrame:
     """
@@ -150,8 +151,9 @@ def compute_max_wind_direction_change(dataset: xr.Dataset, second_window=10, n_j
     # Applying the rolling window function to calculate the minimum scalar product using parallel processing
     min_scalar_results = Parallel(n_jobs=n_jobs)(
         delayed(min_scalar_product)(df['Wind Direction (rad)'].iloc[i:i+second_window])
-        for i in range(len(df) - second_window + 1)
+        for i in tqdm(range(len(df) - second_window + 1), desc=f"Computando mudança máxima na direção do vento (janela: {second_window}s)")
     )
+
     df['Min Scalar Product'] = pd.Series(min_scalar_results, index=df.index[second_window - 1:])
 
     # Calculating the maximum change in wind direction in degrees
