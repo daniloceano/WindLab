@@ -1,6 +1,6 @@
 from glob import glob
 import matplotlib.pyplot as plt
-from windlab import WindDataAccessor
+from windlab.wind_data_reader import WindDataAccessor
 from windlab.processing.utils import get_wind_df, compute_std_detrended_data
 
 ### Reading data ###
