@@ -30,7 +30,7 @@ def get_wind_df(dataset: xr.Dataset, height: int) -> pd.DataFrame:
     wind_speed = dataset.sel(height=height)['Wind Speed (m/s)']
     wind_direction = dataset.sel(height=height)['Wind Direction (°)']
 
-    # Criar um DataFrame usando o tempo como índice
+    # Build a DataFrame using time as the index
     wind_df = pd.DataFrame({
         'Wind Speed (m/s)': wind_speed.values,
         'Wind Direction (°)': wind_direction.values

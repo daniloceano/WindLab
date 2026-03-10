@@ -1,0 +1,33 @@
+name: windlab
+# Ambiente conda dedicado ao WindLab
+# TC nº 050.0125966.23.9 — PETROBRAS/CENPES & USP/IAG
+#
+# Criar ambiente:    conda env create -f environment.yml
+# Atualizar:         conda env update -f environment.yml --prune
+# Ativar:            conda activate windlab
+
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  - python=3.10
+  - pip
+
+  # Núcleo científico (conda-forge garante build otimizado)
+  - numpy>=1.26
+  - pandas>=2.2
+  - xarray>=2024.1
+  - matplotlib>=3.9
+  - seaborn>=0.13
+  - joblib>=1.4
+  - bottleneck           # acelera operações xarray
+  - numexpr              # acelera operações xarray
+
+  # Interface gráfica (tkinter já incluído no Python do conda)
+  # Nenhum pacote adicional necessário
+
+  - pip:
+    - windrose>=1.9.2    # não disponível no conda-forge com garantia de versão
+    - openpyxl>=3.1      # leitura de .xlsx no modo Custom
+    # windlab é instalado em modo editável pelo script setup_env.sh (pip install -e .)

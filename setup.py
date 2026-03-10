@@ -8,11 +8,15 @@ setup(
         'numpy',
         'pandas',
         'xarray',
-        'matplotlib'
+        'matplotlib',
+        'seaborn',
+        'windrose',
+        'joblib',
+        'openpyxl',   # leitura de arquivos .xlsx no modo Custom
     ],
     entry_points={
         'console_scripts': [
-            # Adicione qualquer comando de linha de comando que queira registrar aqui
+            'windlab-gui=windlab.gui.app:run',
         ],
     },
     author='Danilo Couto de Souza',

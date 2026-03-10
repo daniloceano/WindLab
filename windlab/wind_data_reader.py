@@ -25,34 +25,34 @@ class WindDataAccessor:
         xarray.Dataset
             Dataset containing wind data.
         """
-        if isinstance(file_path, str): 
-            # Leitura de um único arquivo
+        if isinstance(file_path, str):
+            # Read a single file
             df = pd.read_csv(file_path, encoding='unicode_escape', skiprows=range(41), sep='\t')
-        
+
         elif isinstance(file_path, list):
-            # Verifica se a lista não está vazia
+            # Check that the list is not empty
             if not file_path:
-                raise ValueError("A lista de arquivos está vazia.")
-            
-            # Leitura de múltiplos arquivos
+                raise ValueError("The file list is empty.")
+
+            # Read multiple files
             dataframes = []
             for file in file_path:
                 try:
                     df = pd.read_csv(file, encoding='unicode_escape', skiprows=range(41), sep='\t')
                     dataframes.append(df)
                 except Exception as e:
-                    logging.warning(f"Falha ao ler o arquivo {file}: {e}")
-            
-            # Verifica se pelo menos um DataFrame foi lido com sucesso
+                    logging.warning(f"Failed to read file {file}: {e}")
+
+            # Check that at least one DataFrame was read successfully
             if dataframes:
                 df = pd.concat(dataframes)
             else:
-                raise ValueError("Nenhum dos arquivos fornecidos pôde ser lido.")
-        
+                raise ValueError("None of the provided files could be read.")
+
         else:
-            raise TypeError("file_path deve ser uma string ou uma lista de strings.")
-        
-        # Cria e retorna o xarray.Dataset a partir do DataFrame lido
+            raise TypeError("file_path must be a string or a list of strings.")
+
+        # Build and return the xarray.Dataset from the loaded DataFrame
         return cls.create_xarray_dataset(df, reference_height)
 
 

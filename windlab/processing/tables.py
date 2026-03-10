@@ -170,28 +170,35 @@ class WindTableProcessor:
         # Retrieve wind speed data for the specified height
         wind_speed = self._dataset['Wind Speed (m/s)'].sel(height=height)
 
-        # Resample the dataset to the specified frequency
-        resampled_data = wind_speed.resample(time=frequency).count()
+        # Convert to a pandas Series; sort and drop duplicate timestamps so
+        # resampling always works regardless of how files were concatenated.
+        ws_series = wind_speed.to_series().sort_index()
+        ws_series = ws_series[~ws_series.index.duplicated(keep='first')]
 
-        # Create a DataFrame to hold the coverage information
-        coverage_df = resampled_data.to_dataframe().reset_index()
+        # Resample to the specified frequency using pandas (avoids xarray
+        # monotonicity requirement when multiple .rtd files are concatenated)
+        resampled_data = ws_series.resample(frequency).count()
+
+        # Build a DataFrame with month and day columns for pivoting
+        coverage_df = resampled_data.rename('count').reset_index()
+        coverage_df.columns = ['time', 'count']
         coverage_df['month'] = coverage_df['time'].dt.to_period('M')
         coverage_df['day'] = coverage_df['time'].dt.day
 
         # Pivot the table to create a month x day structure
-        coverage_table = coverage_df.pivot_table(index='month', columns='day', values='Wind Speed (m/s)', aggfunc='sum')
+        coverage_table = coverage_df.pivot_table(index='month', columns='day', values='count', aggfunc='sum')
 
         # Calculate the percentage of data coverage for each cell
-        max_count_per_day = resampled_data.max()
-        coverage_table = (coverage_table / float(max_count_per_day)) * 100
+        max_count_per_day = float(resampled_data.max())
+        coverage_table = (coverage_table / max_count_per_day) * 100
 
         if plot:
             # Plot the coverage table
             plt.figure(figsize=(17, 10))
-            ax = sns.heatmap(coverage_table, cmap='RdYlBu', linewidths=0.5, annot=True, fmt=".0f", cbar_kws={'label': 'Cobertura [%]'}, linecolor='black')
-            ax.set_title(f'Cobertura de Dados - Altura: {height} m')
-            ax.set_xlabel('Dia do Mês')
-            ax.set_ylabel('Mês e Ano')
+            ax = sns.heatmap(coverage_table, cmap='RdYlBu', linewidths=0.5, annot=True, fmt=".0f", cbar_kws={'label': 'Coverage [%]'}, linecolor='black')
+            ax.set_title(f'Data Coverage — Height: {height} m')
+            ax.set_xlabel('Day of Month')
+            ax.set_ylabel('Month and Year')
             plt.show()
 
             return ax, coverage_table
@@ -231,13 +238,18 @@ class WindTableProcessor:
 
         # Add columns for seasonal and global averages
         seasons = {
-            'Verão': [12, 1, 2],
-            'Outono': [3, 4, 5],
-            'Inverno': [6, 7, 8],
-            'Primavera': [9, 10, 11]
+            'Summer': [12, 1, 2],
+            'Autumn': [3, 4, 5],
+            'Winter': [6, 7, 8],
+            'Spring': [9, 10, 11]
         }
         for season, months in seasons.items():
-            average_speed_table[season] = average_speed_table[months].mean(axis=1)
+            # Only average the months that are actually present in the data
+            available = [m for m in months if m in average_speed_table.columns]
+            if available:
+                average_speed_table[season] = average_speed_table[available].mean(axis=1)
+            else:
+                average_speed_table[season] = float('nan')
         average_speed_table['Global'] = average_speed_table.mean(axis=1)
 
         # Add a row for the monthly average
@@ -250,10 +262,10 @@ class WindTableProcessor:
         if plot:
             # Plot the average wind speed table
             plt.figure(figsize=(18, 10))
-            ax = sns.heatmap(average_speed_table.astype(float), cmap='RdYlGn_r', linewidths=0.5, annot=True, fmt=".2f", cbar_kws={'label': 'V/Vmax'}, linecolor='black')
-            ax.set_title(f'Velocidade Média do Vento - Altura: {height} m')
-            ax.set_xlabel('Mês/Estação')
-            ax.set_ylabel('Hora do Dia')
+            ax = sns.heatmap(average_speed_table.astype(float), cmap='RdYlGn_r', linewidths=0.5, annot=True, fmt=".2f", cbar_kws={'label': 'V / Vₘₐˣ'}, linecolor='black')
+            ax.set_title(f'Average Wind Speed — Height: {height} m')
+            ax.set_xlabel('Month / Season')
+            ax.set_ylabel('Hour of Day')
             plt.show()
             
             return ax, average_speed_table
